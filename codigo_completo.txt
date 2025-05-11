@@ -1,0 +1,1028 @@
+
+================================================================================
+📄 Archivo: src\main.cpp
+================================================================================
+
+#include <Arduino.h>
+#include "utils.h"
+#include "handlers.h"
+#include "routes.h"
+
+#include <FirebaseESP32.h>
+#include "variables.h"
+
+FirebaseData firebaseRead;
+FirebaseData firebaseWrite;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+bool loggedIn = false;
+String currentUser = "";
+
+
+void setup() {
+  
+  Serial.begin(115200);
+  esp_log_level_set("*", ESP_LOG_ERROR);
+
+  Serial.print("Estado de loggedIn al inicio: ");
+  Serial.println(loggedIn ? "true" : "false");
+  loggedIn = false;
+  Serial.println(loggedIn ? "true" : "false");
+
+  initSPIFFS();  // Ya incluye SPIFFS.begin(true)
+
+  Serial.println("Archivos en SPIFFS:");
+  File root = SPIFFS.open("/");
+  while (File file = root.openNextFile()) {
+      Serial.println(" - " + String(file.name()));
+  }
+
+  initPins();
+  initPWM();
+  initWiFi();
+
+  config.database_url = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  auth.user.email = FIREBASE_USER_EMAIL;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+  Serial.println("✅ Firebase inicializado");
+
+  setupRoutes();
+  server.begin();
+}
+
+  
+bool flag = true;
+void loop() {
+  delay(1000);
+  if(flag){
+    ledcWrite(PWM_CHANNEL_LED1, 255);
+    ledcWrite(PWM_CHANNEL_LED2, 255);
+    ledcWrite(PWM_CHANNEL_LED3, 255);
+    ledcWrite(PWM_CHANNEL_LED4, 255);
+    delay(1000);
+    flag = false;
+  }
+  
+
+  server.handleClient();
+  medirDistancia();
+  medirTemperatura();
+  manejarTitileoLED4();
+
+
+}
+
+
+================================================================================
+📄 Archivo: src\handlers.h
+================================================================================
+
+#ifndef HANDLERS_H
+#define HANDLERS_H
+
+#include "utils.h"
+#include <FS.h>
+#include <SPIFFS.h>
+#include <ArduinoJson.h>
+#include <FirebaseESP32.h>
+
+void handleRoot() {
+    Serial.println(">>> Entró a handleRoot");
+
+    if (!loggedIn) {
+        File file = SPIFFS.open("/login.html", FILE_READ);
+        if (!file || file.size() == 0) {
+            Serial.println("❌ No se pudo abrir login.html o está vacío");
+            server.send(500, "text/plain", "login.html no disponible");
+            return;
+        }
+        String html = file.readString();
+        file.close();
+        server.send(200, "text/html", html);
+        return;
+    }
+
+    File file = SPIFFS.open("/index.html", FILE_READ);
+    if (!file || file.size() == 0) {
+        Serial.println("❌ No se pudo abrir index.html o está vacío");
+        server.send(500, "text/plain", "index.html no disponible");
+        return;
+    }
+
+    String html = file.readString();
+    file.close();
+    server.send(200, "text/html", html);
+}
+
+  
+  
+void handleLogin() {
+    if (!server.hasArg("user") || !server.hasArg("pass")) {
+      server.send(400, "text/plain", "Faltan campos.");
+      return;
+    }
+  
+    String user = server.arg("user");
+    String pass = server.arg("pass");
+    String path = "/users/";
+    path.concat(user);
+    path.concat("/password");
+
+    if (Firebase.getString(firebaseRead, path)) {
+      String storedPass = firebaseRead.stringData();
+      if (storedPass == pass) {
+        loggedIn = true;
+        currentUser = user;
+        server.sendHeader("Location", "/", true);
+        server.send(302, "text/plain", "Redirigiendo...");
+      } else {
+        server.send(401, "text/plain", "Contraseña incorrecta");
+      }
+    } else {
+      server.send(404, "text/plain", "Usuario no encontrado");
+    }
+  }
+  
+
+void handleStatus() {
+  DynamicJsonDocument doc(256);
+  doc["led1"] = ledStatus[0];
+  doc["led2"] = ledStatus[1];
+  doc["led3"] = ledStatus[2];
+  doc["led4"] = ledStatus[3];
+  doc["motor_up"] = motorUpStatus;
+  doc["motor_down"] = motorDownStatus;
+
+  String response;
+  serializeJson(doc, response);
+  server.send(200, "application/json", response);
+}
+
+void handleControl() {
+    Serial.println(">>> Entró a handleControl()");
+    Serial.println("Body recibido:");
+    Serial.println(server.arg("plain"));
+  if (server.hasArg("plain")) {
+    String body = server.arg("plain");
+    DynamicJsonDocument doc(200);
+    deserializeJson(doc, body);
+
+    for (JsonPair kv : doc.as<JsonObject>()) {
+      String key = kv.key().c_str();
+      int value = kv.value().as<int>();
+
+      if (key.startsWith("led")) {
+        int i = key.charAt(3) - '1';
+        int channel = (i == 0) ? PWM_CHANNEL_LED1 :
+                      (i == 1) ? PWM_CHANNEL_LED2 :
+                      (i == 2) ? PWM_CHANNEL_LED3 : PWM_CHANNEL_LED4;
+        ledcWrite(channel, value);
+        Serial.print("PWM canal ");
+        Serial.print(channel);
+        Serial.print(" ← valor: ");
+        Serial.println(value);
+
+        ledStatus[i] = value;
+      } else if (key == "motor_up") {
+        motorUpStatus = true;
+        motorDownStatus = false;
+        moveServo(90);
+        tiempoUltimoControlManualPersiana = millis();
+      } else if (key == "motor_down") {
+        motorUpStatus = false;
+        motorDownStatus = true;
+        moveServo(45);
+        tiempoUltimoControlManualPersiana = millis();
+      }
+
+      String mensaje = "Acción: ";
+      mensaje.concat(key);
+      mensaje.concat(" ");
+      if (value != 0) {
+      mensaje.concat("ON: ");
+      mensaje.concat(String(value));
+      } else {
+      mensaje.concat("OFF");
+      }
+      guardarEvento(mensaje);
+
+    }
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Falta el cuerpo de la solicitud");
+  }
+}
+
+void handleLog() {
+  File file = SPIFFS.open("/log.txt", FILE_READ);
+  if (!file) {
+    server.send(500, "text/plain", "No se pudo abrir log.txt");
+    return;
+  }
+  String logData = "";
+  while (file.available()) {
+    String linea = file.readStringUntil('\n');
+    linea.concat('\n');
+    logData.concat(linea);
+  }  
+  file.close();
+  server.send(200, "text/plain", logData);
+}
+
+void handleNotifications() {
+    if (notification.length() == 0) {
+        server.send(204, "text/plain", "");
+        // Sin contenido, no hay warning
+    } else {
+      server.send(200, "text/plain", notification);
+      notification = "";
+    }
+  }
+  
+
+void handleTemperature() {
+  server.send(200, "text/plain", temperature);
+  float tempValue = temperature.toFloat();
+  Serial.println(tempValue);
+
+  if (!isnan(tempValue)) {
+    if (alarmaActiva) {
+      digitalWrite(BUZZER, tempValue > 490 ? HIGH : LOW);
+    } else {
+      digitalWrite(BUZZER, LOW);
+    }
+  }
+}
+
+void handleShowLuces() {
+  showLuces();
+  server.send(200, "text/plain", "Show activado");
+}
+
+void handleAlarmaPOST() {
+    if (server.hasArg("plain")) {
+        alarmaActiva = (server.arg("plain") == "on");
+        
+        String logData = "";
+        File file = SPIFFS.open("/log.txt", FILE_READ);
+        if (file) {
+            while (file.available()) {
+                logData.concat(file.readStringUntil('\n'));
+                logData.concat('\n');
+            }
+            file.close();
+        }
+        else {
+            server.send(400, "text/plain", "Falta el cuerpo de la solicitud");
+        }
+    }
+}
+
+void handleAlarmaGET() {
+  server.send(200, "text/plain", alarmaActiva ? "on" : "off");
+}
+
+#endif
+
+
+================================================================================
+📄 Archivo: src\routes.h
+================================================================================
+
+#ifndef ROUTES_H
+#define ROUTES_H
+
+#include <WebServer.h>
+#include "handlers.h"
+
+void setupRoutes() {
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/status", HTTP_GET, handleStatus);
+  server.on("/control", HTTP_POST, handleControl);
+  server.on("/log", HTTP_GET, handleLog);
+  server.on("/notifications", HTTP_GET, handleNotifications);
+  server.on("/temperature", HTTP_GET, handleTemperature);
+  server.on("/showluces", HTTP_POST, handleShowLuces);
+  server.on("/favicon.ico", HTTP_GET, []() {
+    server.send(204);  // Sin contenido
+  });
+  server.on("/login", HTTP_POST, handleLogin);
+  server.on("/style.css", HTTP_GET, []() {
+    File file = SPIFFS.open("/style.css", FILE_READ);
+    if (!file) {
+      server.send(404, "text/plain", "style.css no encontrado");
+      return;
+    }
+    server.streamFile(file, "text/css");
+    file.close();
+  });
+  server.on("/script.js", HTTP_GET, []() {
+    File file = SPIFFS.open("/script.js", FILE_READ);
+    if (!file || file.size() == 0) {
+        server.send(404, "text/plain", "script.js no encontrado");
+        return;
+    }
+    server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
+  
+
+  server.on("/descargarlog", HTTP_GET, []() {
+    File file = SPIFFS.open("/log.txt", FILE_READ);
+    if (!file) {
+      server.send(500, "text/plain", "No se pudo abrir log.txt");
+      return;
+    }
+    server.sendHeader("Content-Type", "text/plain");
+    server.sendHeader("Content-Disposition", "attachment; filename=log.txt");
+    server.sendHeader("Connection", "close");
+    server.streamFile(file, "text/plain");
+    file.close();
+  });
+
+  server.on("/alarma", HTTP_POST, handleAlarmaPOST);
+  server.on("/alarma", HTTP_GET, handleAlarmaGET);
+}
+
+#endif
+
+
+================================================================================
+📄 Archivo: src\utils.h
+================================================================================
+
+#ifndef UTILS_H
+#define UTILS_H
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <FS.h>
+#include <SPIFFS.h>
+#include <FirebaseESP32.h> 
+#include "variables.h"
+
+extern WebServer server;
+
+// 🔄 Declaraciones de variables Firebase para acceso global
+extern FirebaseData firebaseRead;
+extern FirebaseData firebaseWrite;
+extern FirebaseAuth auth;
+extern FirebaseConfig config;
+
+extern bool loggedIn;
+extern String currentUser;
+
+#define LED1 23
+#define LED2 22
+#define LED3 21
+#define LED4 14
+#define LM35_PIN 34
+#define MOTOR_UP 5
+#define MOTOR_DOWN 16
+#define TRIG_PIN 18
+#define ECHO_PIN 19
+#define ALERT_PIN 2
+#define SERVO_PIN 32
+#define BUZZER 33
+
+#define PWM_FREQ 5000
+#define PWM_RESOLUTION 8
+#define PWM_CHANNEL_LED1 0
+#define PWM_CHANNEL_LED2 1
+#define PWM_CHANNEL_LED3 2
+#define PWM_CHANNEL_LED4 3
+#define SERVO_PWM_CHANNEL 4
+
+String eventLog = "";
+String notification = "";
+String temperature = "";
+int ledStatus[4] = { 0, 0, 0, 0 };
+bool motorUpStatus = false;
+bool motorDownStatus = false;
+bool titilandoLED4 = false;
+unsigned long tiempoInicioTitileo = 0;
+int estadoPrevioLED4 = 0;
+long tiempoUltimoControlManualPersiana = millis();
+bool alarmaActiva = true;
+
+WebServer server(80);
+
+void guardarEvento(String evento);
+void medirDistancia();
+void medirTemperatura();
+void moveServo(int angle);
+void manejarTitileoLED4();
+void showLuces();
+
+
+void initPins() {
+  pinMode(MOTOR_UP, OUTPUT);
+  pinMode(MOTOR_DOWN, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(ALERT_PIN, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+}
+
+void initPWM() {
+  ledcSetup(PWM_CHANNEL_LED1, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(PWM_CHANNEL_LED2, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(PWM_CHANNEL_LED3, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(PWM_CHANNEL_LED4, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(SERVO_PWM_CHANNEL, 50, 16);
+
+  ledcAttachPin(LED1, PWM_CHANNEL_LED1);
+  ledcAttachPin(LED2, PWM_CHANNEL_LED2);
+  ledcAttachPin(LED3, PWM_CHANNEL_LED3);
+  ledcAttachPin(LED4, PWM_CHANNEL_LED4);
+  ledcAttachPin(SERVO_PIN, SERVO_PWM_CHANNEL);
+
+  Serial.println("✅ PWM inicializado");
+}
+
+void initSPIFFS() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Error al montar SPIFFS");
+    while (true);
+  }
+}
+
+void initWiFi() {
+    Serial.println("🔌 Iniciando WiFi en modo STA...");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+  
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+      delay(500);
+      Serial.print(".");
+      retries++;
+    }
+  
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\n✅ WiFi conectado");
+      Serial.print("IP local: ");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("\n❌ Error al conectar WiFi. Verifica SSID y contraseña.");
+    }
+  }
+  
+
+void moveServo(int angle) {
+  int duty = map(angle, 0, 180, 1638, 7864);
+  ledcWrite(SERVO_PWM_CHANNEL, duty);
+}
+
+void medirDistancia() {
+  static unsigned long lastMeasure = 0;
+  if (millis() - lastMeasure < 100) return;
+  lastMeasure = millis();
+
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  float dist = duration * 0.034 / 2;
+
+  if (dist > 0 && dist < 5) {
+    if (alarmaActiva) {
+      digitalWrite(ALERT_PIN, HIGH);
+      digitalWrite(BUZZER, HIGH);
+    }
+    String evento1 = "¡Objeto detectado a ";
+    evento1.concat(String(dist));
+    evento1.concat(" cm!");
+    guardarEvento(evento1);
+
+    notification = "¡Objeto detectado a ";
+    notification.concat(String(dist));
+    notification.concat(" cm!\n");
+
+    if (!titilandoLED4) {
+      estadoPrevioLED4 = ledStatus[3];
+      titilandoLED4 = true;
+      tiempoInicioTitileo = millis();
+    }
+  } else {
+    digitalWrite(ALERT_PIN, LOW);
+    digitalWrite(BUZZER, LOW);
+  }
+}
+
+void medirTemperatura() {
+  static unsigned long last = 0;
+  if (millis() - last < 1000) return;
+  last = millis();
+
+  int raw = analogRead(LM35_PIN);
+  float volt = raw * (5.0 / 4095.0);
+  float temp = volt * 100.0;
+  temperature = String(temp);
+
+  unsigned long now = millis();
+  bool puedeAuto = (now - tiempoUltimoControlManualPersiana > 10000);
+
+  if (puedeAuto) {
+    if (temp > 70.0 && !motorUpStatus) {
+      moveServo(90);
+      motorUpStatus = true;
+      motorDownStatus = false;
+      // guardarEvento("Temp alta (" + String(temp) + "°C). Persiana subida.");
+      String evento2 = "Temp alta (";
+      evento2.concat(String(temp));
+      evento2.concat("°C). Persiana subida.");
+      guardarEvento(evento2);
+      
+
+    } else if (temp <= 70.0 && !motorDownStatus) {
+      moveServo(45);
+      motorUpStatus = false;
+      motorDownStatus = true;
+      
+      //guardarEvento("Temp normal (" + String(temp) + "°C). Persiana bajada.");
+      String evento3 = "Temp normal (";
+      evento3.concat(String(temp));
+      evento3.concat("°C). Persiana bajada.");
+      guardarEvento(evento3);      
+    }
+  }
+}
+
+void guardarEvento(String evento) {
+  unsigned long s = millis() / 1000;
+  int h = (s / 3600) % 24;
+  int m = (s / 60) % 60;
+  int sec = s % 60;
+  char t[12];
+  sprintf(t, "[%02d:%02d:%02d] ", h, m, sec);
+  File f = SPIFFS.open("/log.txt", FILE_APPEND);
+  if (!f) return;
+  f.print(t);
+  f.println(evento);
+  f.close();
+}
+
+void manejarTitileoLED4() {
+  if (!titilandoLED4) return;
+
+  if (millis() - tiempoInicioTitileo < 5000) {
+    static unsigned long lastBlink = 0;
+    static bool ledOn = false;
+    if (millis() - lastBlink >= 250) {
+      ledOn = !ledOn;
+      ledcWrite(PWM_CHANNEL_LED4, ledOn ? 255 : 0);
+      lastBlink = millis();
+    }
+  } else {
+    ledcWrite(PWM_CHANNEL_LED4, estadoPrevioLED4);
+    titilandoLED4 = false;
+  }
+}
+
+void showLuces() {
+  guardarEvento("Inicio del show de luces");
+  int prev[4];
+  int canales[] = {PWM_CHANNEL_LED1, PWM_CHANNEL_LED2, PWM_CHANNEL_LED3, PWM_CHANNEL_LED4};
+  for (int i = 0; i < 4; i++) prev[i] = ledStatus[i];
+
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 4; j++) {
+      ledcWrite(canales[j], 255); delay(100);
+      ledcWrite(canales[j], 0);
+    }
+    for (int k = 0; k < 3; k++) {
+      for (int j = 0; j < 4; j++) ledcWrite(canales[j], 255);
+      delay(150);
+      for (int j = 0; j < 4; j++) ledcWrite(canales[j], 0);
+      delay(150);
+    }
+  }
+
+  for (int i = 0; i < 4; i++) ledcWrite(canales[i], prev[i]);
+  guardarEvento("Fin del show de luces");
+}
+
+#endif
+
+
+================================================================================
+📄 Archivo: src\variables.h
+================================================================================
+
+#ifndef VARIABLES_H
+#define VARIABLES_H
+
+// WiFi
+const char* ssid = "4.18.0fe.54::23a.102";
+const char* password = "12345678";
+
+// Firebase
+#define FIREBASE_HOST "iot-p1-65a68-default-rtdb.firebaseio.com/"
+#define FIREBASE_AUTH "HFTQB5HTggRU7peSJSVw8FonIc0YZCTNJmzaciVr"
+#define FIREBASE_USER_EMAIL "mdjvanegasc@gmail.com"
+
+#endif
+
+
+================================================================================
+📄 Archivo: data\index.html
+================================================================================
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Casa Inteligente</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div id="notification" class="notification">¡Objeto detectado!</div>
+    <div class="navbar">Control de Casa Inteligente</div>
+    <div class="container">
+      <div class="devices-container">
+        <div
+          style="
+            border: #333 solid 1px;
+            padding: 0 10px 30px;
+            border-radius: 10px;
+          "
+        >
+          <h2>Luces</h2>
+          <div class="leds_container">
+            <div class="led_container">
+              <label>Luz 1:</label>
+              <span id="status_led1" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led1', 255)">Encender</button>
+                <button onclick="controlDevice('led1', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led1"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led1', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 2:</label>
+              <span id="status_led2" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led2', 255)">Encender</button>
+                <button onclick="controlDevice('led2', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led2"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led2', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 3:</label>
+              <span id="status_led3" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led3', 255)">Encender</button>
+                <button onclick="controlDevice('led3', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led3"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led3', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 4:</label>
+              <span id="status_led4" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led4', 255)">Encender</button>
+                <button onclick="controlDevice('led4', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led4"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led4', this.value)"
+              />
+            </div>
+          </div>
+          <div style="grid-column: span 2; margin-top: 30px;">
+            <h3>Show de Luces</h3>
+            <button onclick="iniciarShowLuces()">Iniciar Show 🎉</button>
+          </div>
+
+        </div>
+        <div style="border: #333 solid 1px; height: 100%; border-radius: 10px">
+          <h2>Persiana</h2>
+
+          <div class="motor-container">
+            <div id="motor-state">🪟</div>
+            <div>
+              <button onclick="controlDevice('motor_up', 1)">Subir</button>
+              <button onclick="controlDevice('motor_down', 1)">Bajar</button>
+            </div>
+            <div class="status-box">
+              Estado de la Persiana:
+              <p id="motor-status">Perciana cerrada</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="device"
+        style="
+          border: #333 solid 1px;
+          height: 100%;
+          border-radius: 10px;
+          margin-top: 20px;
+        "
+      >
+        <h2>Temperatura</h2>
+        <div id="temperature"></div>
+      </div>
+      <div
+        style="
+          border: #333 solid 1px;
+          height: 100%;
+          border-radius: 10px;
+          margin-top: 20px;
+        "
+      >
+        <h2>Registro de Eventos</h2>
+        <div class="log" id="log"></div>
+      </div>
+      <div style="border: #333 solid 1px; height: 100%; border-radius: 10px; margin-top: 20px;">
+        <h2>Alarma</h2>
+        <p>Estado actual: <strong id="alarma-estado">Cargando...</strong></p>
+        <button id="alarma-boton" onclick="toggleAlarma()">Cargar...</button>
+      </div>
+
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
+
+================================================================================
+📄 Archivo: data\style.css
+================================================================================
+
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  .navbar {
+    background-color: #333;
+    color: white;
+    padding: 15px;
+    font-size: 20px;
+  }
+  .container {
+    width: 80%;
+    margin: auto;
+    padding: 20px;
+  }
+  .devices-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .leds_container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+  }
+
+  .motor-container {
+    width: 250px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  #motor-state {
+    font-size: 100px;
+    margin-bottom: 10px;
+  }
+
+  @media (min-width: 600px) {
+    .devices-container {
+      grid-template-columns: 1fr auto;
+      align-items: start;
+    }
+
+    .motor-container {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+
+  @media (max-width: 599px) {
+    .motor-container {
+      grid-column: 1;
+      margin-top: 20px;
+    }
+  }
+  .led_container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+  }
+  button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    margin: 5px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+  .log,
+  .status-box {
+    text-align: left;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 10px;
+    background: white;
+    border-radius: 5px;
+    margin: 10px;
+  }
+  .notification {
+    display: none;
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: red;
+    color: white;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .status-indicator {
+    display: inline-block;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    margin-left: 10px;
+    border: 2px solid #333;
+    background-color: #111;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5),
+      inset 0 0 15px rgba(0, 0, 0, 0.8);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Efecto cuando el LED está apagado */
+  .status-indicator.off {
+    background: radial-gradient(circle at 30% 30%, #333, #000);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Efecto cuando el LED está encendido */
+  .status-indicator.on {
+    box-shadow: 0 0 20px currentColor, 0 0 40px currentColor,
+      inset 0 0 15px rgba(255, 255, 255, 0.8);
+    animation: pulse-glow 1.5s infinite alternate;
+  }
+
+  /* Efecto de brillo interno */
+  .status-indicator::before {
+    content: "";
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    width: 20%;
+    height: 20%;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    filter: blur(5px);
+  }
+
+  /* Efecto para diferentes colores de LED */
+  .status-indicator.led1.on {
+    background-color: #ff0000;
+    color: #ff0000;
+  }
+  .status-indicator.led2.on {
+    background-color: #00ff00;
+    color: #00ff00;
+  }
+  .status-indicator.led3.on {
+    background-color: #0000ff;
+    color: #0000ff;
+  }
+  .status-indicator.led4.on {
+    background-color: #ffff00;
+    color: #ffff00;
+  }
+
+  /* Animaciones */
+  @keyframes pulse-glow {
+    0% {
+      box-shadow: 0 0 10px currentColor, 0 0 20px currentColor,
+        inset 0 0 10px rgba(255, 255, 255, 0.8);
+    }
+    100% {
+      box-shadow: 0 0 30px currentColor, 0 0 60px currentColor,
+        inset 0 0 15px rgba(255, 255, 255, 0.9);
+    }
+  }
+
+  @keyframes brightness-pulse {
+    0% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 0.3;
+    }
+  }
+
+  /* Efecto para intensidad variable */
+  .status-indicator.dim::before {
+    animation: brightness-pulse 2s infinite ease-in-out;
+  }
+  @keyframes blink {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+================================================================================
+📄 Archivo: data\login.html
+================================================================================
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Iniciar sesión</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="login-container">
+    <h2>Iniciar sesión</h2>
+    <form action="/login" method="POST">
+      <label for="user">Usuario:</label><br>
+      <input type="text" id="user" name="user" required><br><br>
+
+      <label for="pass">Contraseña:</label><br>
+      <input type="password" id="pass" name="pass" required><br><br>
+
+      <input type="submit" value="Ingresar">
+    </form>
+  </div>
+</body>
+</html>
+

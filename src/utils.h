@@ -83,6 +83,8 @@ void initPWM() {
   ledcAttachPin(LED3, PWM_CHANNEL_LED3);
   ledcAttachPin(LED4, PWM_CHANNEL_LED4);
   ledcAttachPin(SERVO_PIN, SERVO_PWM_CHANNEL);
+
+  Serial.println("✅ PWM inicializado");
 }
 
 void initSPIFFS() {

@@ -16,7 +16,11 @@ String currentUser = "";
 
 
 void setup() {
+  
   Serial.begin(115200);
+  esp_log_level_set("*", ESP_LOG_ERROR);              // oculta todos excepto errores
+  esp_log_level_set("WiFiClient", ESP_LOG_ERROR);     // silencia el spam específico
+
 
   Serial.print("Estado de loggedIn al inicio: ");
   Serial.println(loggedIn ? "true" : "false");
@@ -29,17 +33,6 @@ void setup() {
   File root = SPIFFS.open("/");
   while (File file = root.openNextFile()) {
       Serial.println(" - " + String(file.name()));
-  }
-
-  File f = SPIFFS.open("/login.html", FILE_READ);
-  if (!f || f.size() == 0) {
-      Serial.println("❌ NO SE PUDO LEER login.html desde setup()");
-  } else {
-      Serial.println("✅ SE LEYÓ login.html desde setup()");
-      while (f.available()) {
-          Serial.write(f.read());
-      }
-      f.close();
   }
 
   initPins();
@@ -59,10 +52,12 @@ void setup() {
 }
 
   
-
+bool flag = true;
 void loop() {
   server.handleClient();
   medirDistancia();
   medirTemperatura();
   manejarTitileoLED4();
+
+
 }

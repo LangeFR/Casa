@@ -80,6 +80,9 @@ void handleStatus() {
 }
 
 void handleControl() {
+    Serial.println(">>> Entró a handleControl()");
+    Serial.println("Body recibido:");
+    Serial.println(server.arg("plain"));
   if (server.hasArg("plain")) {
     String body = server.arg("plain");
     DynamicJsonDocument doc(200);
@@ -95,6 +98,11 @@ void handleControl() {
                       (i == 1) ? PWM_CHANNEL_LED2 :
                       (i == 2) ? PWM_CHANNEL_LED3 : PWM_CHANNEL_LED4;
         ledcWrite(channel, value);
+        Serial.print("PWM canal ");
+        Serial.print(channel);
+        Serial.print(" ← valor: ");
+        Serial.println(value);
+
         ledStatus[i] = value;
       } else if (key == "motor_up") {
         motorUpStatus = true;
@@ -144,7 +152,8 @@ void handleLog() {
 
 void handleNotifications() {
     if (notification.length() == 0) {
-      server.send(204);       // Sin contenido, no hay warning
+        server.send(204, "text/plain", "");
+        // Sin contenido, no hay warning
     } else {
       server.send(200, "text/plain", notification);
       notification = "";

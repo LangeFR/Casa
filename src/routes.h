@@ -12,9 +12,13 @@ void setupRoutes() {
   server.on("/notifications", HTTP_GET, handleNotifications);
   server.on("/temperature", HTTP_GET, handleTemperature);
   server.on("/showluces", HTTP_POST, handleShowLuces);
-  server.on("/favicon.ico", HTTP_GET, []() {
-    server.send(204);  // Sin contenido
-  });
+    if (notification.length() == 0) {
+        server.send(204, "text/plain", ""); // ← evita warning
+    } else {
+        server.send(200, "text/plain", notification);
+    notification = "";
+    }
+
   server.on("/login", HTTP_POST, handleLogin);
   server.on("/style.css", HTTP_GET, []() {
     File file = SPIFFS.open("/style.css", FILE_READ);
