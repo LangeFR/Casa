@@ -5,8 +5,19 @@
 #include <WebServer.h>
 #include <FS.h>
 #include <SPIFFS.h>
+#include <FirebaseESP32.h> 
+#include "variables.h"
 
 extern WebServer server;
+
+// 🔄 Declaraciones de variables Firebase para acceso global
+extern FirebaseData firebaseRead;
+extern FirebaseData firebaseWrite;
+extern FirebaseAuth auth;
+extern FirebaseConfig config;
+
+extern bool loggedIn;
+extern String currentUser;
 
 #define LED1 23
 #define LED2 22
@@ -82,11 +93,26 @@ void initSPIFFS() {
 }
 
 void initWiFi() {
-  WiFi.softAP("CasaInteligenteJM", "123456789");
-  Serial.println("WiFi AP iniciado");
-  Serial.print("IP del AP: ");
-  Serial.println(WiFi.softAPIP());
-}
+    Serial.println("🔌 Iniciando WiFi en modo STA...");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+  
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+      delay(500);
+      Serial.print(".");
+      retries++;
+    }
+  
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\n✅ WiFi conectado");
+      Serial.print("IP local: ");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("\n❌ Error al conectar WiFi. Verifica SSID y contraseña.");
+    }
+  }
+  
 
 void moveServo(int angle) {
   int duty = map(angle, 0, 180, 1638, 7864);
@@ -112,8 +138,15 @@ void medirDistancia() {
       digitalWrite(ALERT_PIN, HIGH);
       digitalWrite(BUZZER, HIGH);
     }
-    guardarEvento("¡Objeto detectado a " + String(dist) + " cm!");
-    notification = "¡Objeto detectado a " + String(dist) + " cm!\n";
+    String evento1 = "¡Objeto detectado a ";
+    evento1.concat(String(dist));
+    evento1.concat(" cm!");
+    guardarEvento(evento1);
+
+    notification = "¡Objeto detectado a ";
+    notification.concat(String(dist));
+    notification.concat(" cm!\n");
+
     if (!titilandoLED4) {
       estadoPrevioLED4 = ledStatus[3];
       titilandoLED4 = true;
@@ -143,12 +176,23 @@ void medirTemperatura() {
       moveServo(90);
       motorUpStatus = true;
       motorDownStatus = false;
-      guardarEvento("Temp alta (" + String(temp) + "°C). Persiana subida.");
+      // guardarEvento("Temp alta (" + String(temp) + "°C). Persiana subida.");
+      String evento2 = "Temp alta (";
+      evento2.concat(String(temp));
+      evento2.concat("°C). Persiana subida.");
+      guardarEvento(evento2);
+      
+
     } else if (temp <= 70.0 && !motorDownStatus) {
       moveServo(45);
       motorUpStatus = false;
       motorDownStatus = true;
-      guardarEvento("Temp normal (" + String(temp) + "°C). Persiana bajada.");
+      
+      //guardarEvento("Temp normal (" + String(temp) + "°C). Persiana bajada.");
+      String evento3 = "Temp normal (";
+      evento3.concat(String(temp));
+      evento3.concat("°C). Persiana bajada.");
+      guardarEvento(evento3);      
     }
   }
 }

@@ -5,26 +5,64 @@
 #include <FS.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <FirebaseESP32.h>
 
 void handleRoot() {
     Serial.println(">>> Entró a handleRoot");
-  
+
+    if (!loggedIn) {
+        File file = SPIFFS.open("/login.html", FILE_READ);
+        if (!file || file.size() == 0) {
+            Serial.println("❌ No se pudo abrir login.html o está vacío");
+            server.send(500, "text/plain", "login.html no disponible");
+            return;
+        }
+        String html = file.readString();
+        file.close();
+        server.send(200, "text/html", html);
+        return;
+    }
+
     File file = SPIFFS.open("/index.html", FILE_READ);
     if (!file || file.size() == 0) {
-      Serial.println("❌ No se pudo abrir index.html o está vacío");
-      server.send(500, "text/plain", "index.html no disponible");
+        Serial.println("❌ No se pudo abrir index.html o está vacío");
+        server.send(500, "text/plain", "index.html no disponible");
+        return;
+    }
+
+    String html = file.readString();
+    file.close();
+    server.send(200, "text/html", html);
+}
+
+  
+  
+void handleLogin() {
+    if (!server.hasArg("user") || !server.hasArg("pass")) {
+      server.send(400, "text/plain", "Faltan campos.");
       return;
     }
   
-    Serial.println("✅ index.html cargado correctamente");
-  
-    String html = file.readString();  // <<<< LEER TODO A RAM
-    file.close();
-  
-    server.send(200, "text/html", html);  // <<<< NO usar streamFile
+    String user = server.arg("user");
+    String pass = server.arg("pass");
+    String path = "/users/";
+    path.concat(user);
+    path.concat("/password");
+
+    if (Firebase.getString(firebaseRead, path)) {
+      String storedPass = firebaseRead.stringData();
+      if (storedPass == pass) {
+        loggedIn = true;
+        currentUser = user;
+        server.sendHeader("Location", "/", true);
+        server.send(302, "text/plain", "Redirigiendo...");
+      } else {
+        server.send(401, "text/plain", "Contraseña incorrecta");
+      }
+    } else {
+      server.send(404, "text/plain", "Usuario no encontrado");
+    }
   }
-  
-  
   
 
 void handleStatus() {
@@ -70,7 +108,17 @@ void handleControl() {
         tiempoUltimoControlManualPersiana = millis();
       }
 
-      guardarEvento("Acción: " + key + " " + (value != 0 ? "ON: " + String(value) : "OFF"));
+      String mensaje = "Acción: ";
+      mensaje.concat(key);
+      mensaje.concat(" ");
+      if (value != 0) {
+      mensaje.concat("ON: ");
+      mensaje.concat(String(value));
+      } else {
+      mensaje.concat("OFF");
+      }
+      guardarEvento(mensaje);
+
     }
     server.send(200, "text/plain", "OK");
   } else {
@@ -84,10 +132,14 @@ void handleLog() {
     server.send(500, "text/plain", "No se pudo abrir log.txt");
     return;
   }
-  String log = "";
-  while (file.available()) log += file.readStringUntil('\n') + "\n";
+  String logData = "";
+  while (file.available()) {
+    String linea = file.readStringUntil('\n');
+    linea.concat('\n');
+    logData.concat(linea);
+  }  
   file.close();
-  server.send(200, "text/plain", log);
+  server.send(200, "text/plain", logData);
 }
 
 void handleNotifications() {
@@ -120,13 +172,22 @@ void handleShowLuces() {
 }
 
 void handleAlarmaPOST() {
-  if (server.hasArg("plain")) {
-    alarmaActiva = (server.arg("plain") == "on");
-    guardarEvento("Alarma " + String(alarmaActiva ? "activada" : "desactivada"));
-    server.send(200, "text/plain", "Estado actualizado");
-  } else {
-    server.send(400, "text/plain", "Falta el cuerpo de la solicitud");
-  }
+    if (server.hasArg("plain")) {
+        alarmaActiva = (server.arg("plain") == "on");
+        
+        String logData = "";
+        File file = SPIFFS.open("/log.txt", FILE_READ);
+        if (file) {
+            while (file.available()) {
+                logData.concat(file.readStringUntil('\n'));
+                logData.concat('\n');
+            }
+            file.close();
+        }
+        else {
+            server.send(400, "text/plain", "Falta el cuerpo de la solicitud");
+        }
+    }
 }
 
 void handleAlarmaGET() {

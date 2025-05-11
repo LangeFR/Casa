@@ -15,6 +15,7 @@ void setupRoutes() {
   server.on("/favicon.ico", HTTP_GET, []() {
     server.send(204);  // Sin contenido
   });
+  server.on("/login", HTTP_POST, handleLogin);
   
 
   server.on("/descargarlog", HTTP_GET, []() {
