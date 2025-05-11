@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Casa Inteligente</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 0;
+      }
+      .navbar {
+        background-color: #333;
+        color: white;
+        padding: 15px;
+        font-size: 20px;
+      }
+      .container {
+        width: 80%;
+        margin: auto;
+        padding: 20px;
+      }
+      .devices-container {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      .leds_container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+      }
+
+      .motor-container {
+        width: 250px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      #motor-state {
+        font-size: 100px;
+        margin-bottom: 10px;
+      }
+
+      @media (min-width: 600px) {
+        .devices-container {
+          grid-template-columns: 1fr auto;
+          align-items: start;
+        }
+
+        .motor-container {
+          grid-column: 2;
+          grid-row: 1;
+        }
+      }
+
+      @media (max-width: 599px) {
+        .motor-container {
+          grid-column: 1;
+          margin-top: 20px;
+        }
+      }
+      .led_container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+      }
+      button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        margin: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      .log,
+      .status-box {
+        text-align: left;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        background: white;
+        border-radius: 5px;
+        margin: 10px;
+      }
+      .notification {
+        display: none;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background-color: red;
+        color: white;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        margin-left: 10px;
+        border: 2px solid #333;
+        background-color: #111;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5),
+          inset 0 0 15px rgba(0, 0, 0, 0.8);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Efecto cuando el LED está apagado */
+      .status-indicator.off {
+        background: radial-gradient(circle at 30% 30%, #333, #000);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+      }
+
+      /* Efecto cuando el LED está encendido */
+      .status-indicator.on {
+        box-shadow: 0 0 20px currentColor, 0 0 40px currentColor,
+          inset 0 0 15px rgba(255, 255, 255, 0.8);
+        animation: pulse-glow 1.5s infinite alternate;
+      }
+
+      /* Efecto de brillo interno */
+      .status-indicator::before {
+        content: "";
+        position: absolute;
+        top: 10%;
+        left: 10%;
+        width: 20%;
+        height: 20%;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        filter: blur(5px);
+      }
+
+      /* Efecto para diferentes colores de LED */
+      .status-indicator.led1.on {
+        background-color: #ff0000;
+        color: #ff0000;
+      }
+      .status-indicator.led2.on {
+        background-color: #00ff00;
+        color: #00ff00;
+      }
+      .status-indicator.led3.on {
+        background-color: #0000ff;
+        color: #0000ff;
+      }
+      .status-indicator.led4.on {
+        background-color: #ffff00;
+        color: #ffff00;
+      }
+
+      /* Animaciones */
+      @keyframes pulse-glow {
+        0% {
+          box-shadow: 0 0 10px currentColor, 0 0 20px currentColor,
+            inset 0 0 10px rgba(255, 255, 255, 0.8);
+        }
+        100% {
+          box-shadow: 0 0 30px currentColor, 0 0 60px currentColor,
+            inset 0 0 15px rgba(255, 255, 255, 0.9);
+        }
+      }
+
+      @keyframes brightness-pulse {
+        0% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 0.7;
+        }
+        100% {
+          opacity: 0.3;
+        }
+      }
+
+      /* Efecto para intensidad variable */
+      .status-indicator.dim::before {
+        animation: brightness-pulse 2s infinite ease-in-out;
+      }
+      @keyframes blink {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.05);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="notification" class="notification">¡Objeto detectado!</div>
+    <div class="navbar">Control de Casa Inteligente</div>
+    <div class="container">
+      <div class="devices-container">
+        <div
+          style="
+            border: #333 solid 1px;
+            padding: 0 10px 30px;
+            border-radius: 10px;
+          "
+        >
+          <h2>Luces</h2>
+          <div class="leds_container">
+            <div class="led_container">
+              <label>Luz 1:</label>
+              <span id="status_led1" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led1', 255)">Encender</button>
+                <button onclick="controlDevice('led1', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led1"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led1', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 2:</label>
+              <span id="status_led2" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led2', 255)">Encender</button>
+                <button onclick="controlDevice('led2', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led2"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led2', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 3:</label>
+              <span id="status_led3" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led3', 255)">Encender</button>
+                <button onclick="controlDevice('led3', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led3"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led3', this.value)"
+              />
+            </div>
+            <div class="led_container">
+              <label>Luz 4:</label>
+              <span id="status_led4" class="status-indicator"></span>
+              <div>
+                <button onclick="controlDevice('led4', 255)">Encender</button>
+                <button onclick="controlDevice('led4', 0)">Apagar</button>
+              </div>
+              <input
+                type="range"
+                id="slider_led4"
+                min="0"
+                max="255"
+                value="0"
+                oninput="controlDevice('led4', this.value)"
+              />
+            </div>
+          </div>
+          <div style="grid-column: span 2; margin-top: 30px;">
+            <h3>Show de Luces</h3>
+            <button onclick="iniciarShowLuces()">Iniciar Show 🎉</button>
+          </div>
+
+        </div>
+        <div style="border: #333 solid 1px; height: 100%; border-radius: 10px">
+          <h2>Persiana</h2>
+
+          <div class="motor-container">
+            <div id="motor-state">🪟</div>
+            <div>
+              <button onclick="controlDevice('motor_up', 1)">Subir</button>
+              <button onclick="controlDevice('motor_down', 1)">Bajar</button>
+            </div>
+            <div class="status-box">
+              Estado de la Persiana:
+              <p id="motor-status">Perciana cerrada</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="device"
+        style="
+          border: #333 solid 1px;
+          height: 100%;
+          border-radius: 10px;
+          margin-top: 20px;
+        "
+      >
+        <h2>Temperatura</h2>
+        <div id="temperature"></div>
+      </div>
+      <div
+        style="
+          border: #333 solid 1px;
+          height: 100%;
+          border-radius: 10px;
+          margin-top: 20px;
+        "
+      >
+        <h2>Registro de Eventos</h2>
+        <div class="log" id="log"></div>
+      </div>
+      <div style="border: #333 solid 1px; height: 100%; border-radius: 10px; margin-top: 20px;">
+        <h2>Alarma</h2>
+        <p>Estado actual: <strong id="alarma-estado">Cargando...</strong></p>
+        <button id="alarma-boton" onclick="toggleAlarma()">Cargar...</button>
+      </div>
+
+    </div>
+    <script>
+      function updateLightStatus(lightId, value) {
+        document.getElementById(`slider_${lightId}`).value = value;
+        const indicator = document.getElementById(`status_${lightId}`);
+        const intensity = Math.round((value / 255) * 100);
+
+        // Reset classes
+        indicator.className = "status-indicator";
+
+        if (value > 0) {
+          indicator.classList.add("on", `led${lightId.slice(-1)}`);
+
+          // Efecto de brillo proporcional a la intensidad
+          indicator.style.opacity = 0.3 + (intensity / 100) * 0.7;
+
+          if (value < 255) {
+            indicator.classList.add("dim");
+          }
+        } else {
+          indicator.classList.add("off");
+        }
+      }
+      function updateServoStatus(device, value) {
+        const indicator = document.getElementById(`motor-status`);
+        const state = document.getElementById(`motor-state`);
+        if (device === "motor_up") {
+          indicator.innerHTML =
+            "Persiana Subiendo <span class='arrow-up'>↑</span>";
+          state.innerHTML = "<span class='arrow-up'>↑</span>";
+          setTimeout(() => {
+            indicator.innerHTML = "Persiana abierta";
+            state.innerHTML = "<span class='window-open'>🌄</span>";
+          }, 1000);
+        } else if (device === "motor_down") {
+          indicator.innerHTML =
+            "Persiana Bajando <span class='arrow-down'>↓</span>";
+          state.innerHTML = "<span class='arrow-down'>↓</span>";
+          setTimeout(() => {
+            indicator.innerHTML = "Persiana cerrada";
+            state.innerHTML = "<span class='window-closed'>🪟</span>";
+          }, 1000);
+        }
+      }
+      function controlDevice(device, state) {
+        if (device.startsWith("led")) {
+          updateLightStatus(device, state);
+        } else if (device.startsWith("motor_")) {
+          updateServoStatus(device, state);
+        }
+        fetch("/control", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [device]: parseInt(state) }),
+        });
+      }
+      function loadLog() {
+        const logElement = document.getElementById("log");
+        const currentText = logElement.innerText; // Guardar texto actual
+
+        fetch("/log")
+          .then((response) => response.text())
+          .then((text) => {
+            if (text) {
+              // Solo actualizar si hay nuevo contenido
+              logElement.innerText = text;
+            }
+          })
+          .catch(() => {
+            logElement.innerText = currentText; // Restaurar si falla
+          });
+      }
+      window.onload = function () {
+        loadLog();
+        setInterval(loadLog, 2000);
+      };
+
+      function checkTemperature() {
+        fetch("/temperature")
+          .then((response) => response.text())
+          .then((text) => {
+            const tempElement = document.getElementById("temperature");
+            const tempValue = parseFloat(text);
+
+            // Aplicar estilos base
+            tempElement.style.fontSize = "24px";
+            tempElement.style.fontWeight = "bold";
+            tempElement.style.padding = "15px";
+            tempElement.style.borderRadius = "10px";
+            tempElement.style.textAlign = "center";
+            tempElement.style.margin = "10px 0";
+            tempElement.style.transition = "all 0.3s ease";
+
+            if (tempValue > 150) {
+              // Estilo para temperatura peligrosa
+              tempElement.style.backgroundColor = "#ff4444";
+              tempElement.style.color = "white";
+              tempElement.style.boxShadow = "0 0 15px #ff0000";
+              tempElement.innerHTML = `${text}°C 🔥 <span style="animation: blink 1s infinite;">¡PELIGRO!</span>`;
+            } else if (tempValue > 100) {
+              // Estilo para temperatura alta
+              tempElement.style.backgroundColor = "#ff9966";
+              tempElement.style.color = "black";
+              tempElement.innerHTML = `${text}°C ⚠️`;
+            } else if (tempValue > 50) {
+              // Estilo para temperatura moderada
+              tempElement.style.backgroundColor = "#ffff99";
+              tempElement.style.color = "black";
+              tempElement.innerHTML = `${text}°C ☀️`;
+            } else {
+              // Estilo para temperatura normal
+              tempElement.style.backgroundColor = "#99ccff";
+              tempElement.style.color = "black";
+              tempElement.innerHTML = `${text}°C ❄️`;
+            }
+          });
+      }
+
+      function iniciarShowLuces() {
+        fetch("/showluces", { method: "POST" })
+          .then(() => alert("¡Show de luces activado! "))
+          .catch(() => alert("No se pudo activar el show de luces"));
+      }
+
+
+      function checkForNotification() {
+        fetch("/notifications")
+          .then((response) => response.text())
+          .then((text) => {
+            if (text.includes("¡Objeto detectado")) {
+              showNotification();
+            }
+          });
+      }
+
+      function showNotification() {
+        let notification = document.getElementById("notification");
+        notification.style.display = "block";
+
+        setTimeout(() => {
+          notification.style.display = "none";
+        }, 3000);
+      }
+      setInterval(checkForNotification, 1000);
+      setInterval(checkTemperature, 200000000);
+
+      function actualizarEstadoAlarma() {
+        fetch("/alarma")
+          .then((response) => response.text())
+          .then((estado) => {
+            const texto = estado === "on" ? "Activa" : "Desactivada";
+            const textoBoton = estado === "on" ? "Desactivar Alarma" : "Activar Alarma";
+
+            document.getElementById("alarma-estado").innerText = texto;
+            document.getElementById("alarma-boton").innerText = textoBoton;
+          });
+      }
+
+      function toggleAlarma() {
+        fetch("/alarma")
+          .then((response) => response.text())
+          .then((estadoActual) => {
+            const nuevoEstado = estadoActual === "on" ? "off" : "on";
+
+            fetch("/alarma", {
+              method: "POST",
+              headers: { "Content-Type": "text/plain" },
+              body: nuevoEstado,
+            }).then(() => actualizarEstadoAlarma());
+          });
+      }
+
+      window.onload = function () {
+        loadLog();
+        actualizarEstadoAlarma();  // Cargar estado de la alarma al inicio
+        setInterval(loadLog, 2000);
+      };
+
+    </script>
+  </body>
+</html>
