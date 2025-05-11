@@ -16,6 +16,25 @@ void setupRoutes() {
     server.send(204);  // Sin contenido
   });
   server.on("/login", HTTP_POST, handleLogin);
+  server.on("/style.css", HTTP_GET, []() {
+    File file = SPIFFS.open("/style.css", FILE_READ);
+    if (!file) {
+      server.send(404, "text/plain", "style.css no encontrado");
+      return;
+    }
+    server.streamFile(file, "text/css");
+    file.close();
+  });
+  server.on("/script.js", HTTP_GET, []() {
+    File file = SPIFFS.open("/script.js", FILE_READ);
+    if (!file || file.size() == 0) {
+        server.send(404, "text/plain", "script.js no encontrado");
+        return;
+    }
+    server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
   
 
   server.on("/descargarlog", HTTP_GET, []() {
