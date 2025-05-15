@@ -104,15 +104,16 @@ void handleControl() {
         Serial.println(value);
 
         ledStatus[i] = value;
+        return;
       } else if (key == "motor_up") {
         motorUpStatus = true;
         motorDownStatus = false;
-        moveServo(90);
+        moveServo(90, "MoveServo Subir");
         tiempoUltimoControlManualPersiana = millis();
       } else if (key == "motor_down") {
         motorUpStatus = false;
         motorDownStatus = true;
-        moveServo(45);
+        moveServo(45,"MoveServo bajar");
         tiempoUltimoControlManualPersiana = millis();
       }
 
