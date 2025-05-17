@@ -1,109 +1,216 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Iniciar sesión con imagen</title>
+    <title>Reconocimiento Facial - Face++</title>
     <style>
-      .login-container {
-        max-width: 400px;
-        margin: auto;
+      body {
+        font-family: Arial;
         padding: 20px;
-        text-align: center;
-        border: 1px solid #ccc;
-        border-radius: 10px;
+        max-width: 600px;
+        margin: auto;
       }
-      canvas {
-        display: none;
+      section {
+        margin-bottom: 30px;
+      }
+      label {
+        display: block;
+        margin-top: 10px;
+      }
+      input[type="file"] {
+        margin-top: 5px;
+      }
+      button {
+        margin-top: 10px;
+      }
+      .result {
+        margin-top: 15px;
+        font-weight: bold;
       }
     </style>
   </head>
   <body>
-    <div class="login-container">
-      <h2>Iniciar sesión</h2>
-      <form id="imageForm">
-        <label for="image">Subir imagen:</label><br />
-        <input type="file" id="image" accept="image/*" required /><br /><br />
-        <input type="submit" value="Ingresar" />
-      </form>
-      <p id="result"></p>
-    </div>
+    <h1>Reconocimiento Facial con Face++</h1>
 
-    <!-- Imágenes base (como base de datos) -->
-    <img id="db1" src="db_images/user1.jpg" hidden />
-    <img id="db2" src="db_images/user2.jpg" hidden />
-    <img id="db3" src="db_images/user3.jpg" hidden />
+    <section>
+      <h2>1. Registrar Rostro</h2>
+      <input type="file" id="registerImage" />
+      <button onclick="registerFace()">Registrar</button>
+      <div id="registerResult" class="result"></div>
+    </section>
 
-    <canvas id="canvas" width="100" height="100"></canvas>
+    <section>
+      <h2>2. Verificar Rostro</h2>
+      <img
+        id="verifyPreview"
+        src=""
+        alt="Vista previa"
+        style="max-width: 100%; margin-top: 10px; display: none"
+      />
 
+      <input type="file" id="verifyImage" />
+      <button onclick="verifyFace()">Verificar</button>
+      <div id="verifyResult" class="result"></div>
+    </section>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <!-- Firebase Realtime Database SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script>
-      const form = document.getElementById("imageForm");
-      const result = document.getElementById("result");
-      const dbImages = [
-        { id: "db1", name: "Usuario 1" },
-        { id: "db2", name: "Usuario 2" },
-        { id: "db3", name: "Usuario 3" },
-      ];
+      const firebaseConfig = {
+        apiKey: "AIzaSyAdfgGP1OWjXVkUtgpK9P149qkMyaZ7Oak",
+        authDomain: "iot-p1-65a68.firebaseapp.com",
+        databaseURL: "https://iot-p1-65a68-default-rtdb.firebaseio.com",
+        projectId: "iot-p1-65a68",
+        storageBucket: "iot-p1-65a68.firebasestorage.app",
+        messagingSenderId: "931106622215",
+        appId: "1:931106622215:web:48d0891ea076a1886493a2",
+        measurementId: "G-V5CYFV4HLW",
+      };
 
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        result.textContent = "Comparando imagen...";
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+    </script>
+    <script>
+      document
+        .getElementById("verifyImage")
+        .addEventListener("change", function () {
+          const file = this.files[0];
+          const previewImg = document.getElementById("verifyPreview");
 
-        const file = document.getElementById("image").files[0];
-        if (!file) return;
-
-        const imgURL = URL.createObjectURL(file);
-        const uploadedImg = await loadImage(imgURL);
-
-        // Redimensionamos al mismo tamaño
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(uploadedImg, 0, 0, canvas.width, canvas.height);
-        const uploadedData = ctx.getImageData(
-          0,
-          0,
-          canvas.width,
-          canvas.height
-        ).data;
-
-        for (let db of dbImages) {
-          const dbImg = document.getElementById(db.id);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(dbImg, 0, 0, canvas.width, canvas.height);
-          const dbData = ctx.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-          ).data;
-
-          if (compareImages(uploadedData, dbData)) {
-            result.textContent = `¡Bienvenido, ${db.name}! Imagen coincidente.`;
+          if (!file) {
+            previewImg.style.display = "none";
+            previewImg.src = "";
             return;
           }
-        }
 
-        result.textContent = "No se encontró coincidencia con ningún usuario.";
-      });
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            previewImg.src = e.target.result;
+            previewImg.style.display = "block";
+          };
+          reader.readAsDataURL(file);
+        });
+    </script>
+    <script>
+      const API_KEY = "J8C5ftGY3oPn8i3FIPTxpo6CC3N5J62Z";
+      const API_SECRET = "KSPVEjlZnI2K3ODCZaTsqBKCfJM3CnGe";
 
-      function loadImage(src) {
-        return new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.src = src;
+      async function getFaceTokensFromFirebase() {
+        const snapshot = await db.ref("face_tokens").once("value");
+        const data = snapshot.val();
+        if (!data) return [];
+        return Object.values(data).map((entry) => entry.face_token);
+      }
+
+      function saveFaceTokenToFirebase(token) {
+        const timestamp = Date.now();
+        db.ref("face_tokens/" + timestamp).set({
+          face_token: token,
+          created_at: new Date().toISOString(),
         });
       }
 
-      function compareImages(data1, data2, tolerance = 5) {
-        if (data1.length !== data2.length) return false;
+      // Función para detectar un rostro y obtener su face_token
+      async function detectFace(file) {
+        const formData = new FormData();
+        formData.append("api_key", API_KEY);
+        formData.append("api_secret", API_SECRET);
+        formData.append("image_file", file);
 
-        for (let i = 0; i < data1.length; i++) {
-          if (Math.abs(data1[i] - data2[i]) > tolerance) {
-            return false;
+        const res = await fetch(
+          "https://api-us.faceplusplus.com/facepp/v3/detect",
+          {
+            method: "POST",
+            body: formData,
           }
+        );
+        const data = await res.json();
+        if (data.faces && data.faces.length > 0) {
+          return data.faces[0].face_token;
+        } else {
+          throw new Error("No se detectó ningún rostro.");
         }
-        return true;
+      }
+
+      // Registrar rostro
+      async function registerFace() {
+        const fileInput = document.getElementById("registerImage");
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        document.getElementById("registerResult").innerText = "Procesando...";
+
+        try {
+          const faceToken = await detectFace(file);
+          saveFaceTokenToFirebase(faceToken); // ✅ usa esta
+          document.getElementById("registerResult").innerText =
+            "Rostro registrado exitosamente.";
+        } catch (err) {
+          document.getElementById("registerResult").innerText =
+            "Error: " + err.message;
+        }
+      }
+
+      // Verificar rostro
+      // Verificar rostro con tokens dentro de /users
+      async function verifyFace() {
+        const fileInput = document.getElementById("verifyImage");
+        const file = fileInput.files[0];
+        const previewImg = document.getElementById("verifyPreview");
+
+        if (!file) return;
+
+        document.getElementById("verifyResult").innerText = "Procesando...";
+
+        try {
+          // Obtener todos los usuarios
+          const snapshot = await db.ref("users").once("value");
+          const users = snapshot.val();
+
+          if (!users) {
+            document.getElementById("verifyResult").innerText =
+              "No hay usuarios registrados.";
+            return;
+          }
+
+          const userEntries = Object.entries(users); // [[uid1, data1], [uid2, data2], ...]
+
+          for (const [uid, userData] of userEntries) {
+            const token = userData.face_token;
+            if (!token) continue;
+
+            const formData = new FormData();
+            formData.append("api_key", API_KEY);
+            formData.append("api_secret", API_SECRET);
+            formData.append("image_file1", file);
+            formData.append("face_token2", token);
+
+            const res = await fetch(
+              "https://api-us.faceplusplus.com/facepp/v3/compare",
+              {
+                method: "POST",
+                body: formData,
+              }
+            );
+
+            const data = await res.json();
+
+            if (data.confidence && data.confidence >= 50) {
+              document.getElementById(
+                "verifyResult"
+              ).innerText = `✅ Bienvenido ${userData.user}, tu rol es: ${
+                userData.rol
+              } (Similitud: ${data.confidence.toFixed(2)}%)`;
+              return;
+            }
+          }
+
+          document.getElementById("verifyResult").innerText =
+            "❌ No autenticado. No se encontró similitud suficiente.";
+        } catch (err) {
+          document.getElementById("verifyResult").innerText =
+            "Error: " + err.message;
+        }
       }
     </script>
   </body>

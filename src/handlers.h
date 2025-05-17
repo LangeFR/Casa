@@ -46,10 +46,9 @@ void handleLogin() {
     String user = server.arg("user");
     String pass = server.arg("pass");
     String path = "/users/";
-    path.concat(user);
-    path.concat("/password");
 
     if (Firebase.getString(firebaseRead, path)) {
+      String json = firebaseRead.stringData();
       String storedPass = firebaseRead.stringData();
       if (storedPass == pass) {
         loggedIn = true;
