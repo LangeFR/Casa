@@ -13,14 +13,7 @@ void setupRoutes() {
   server.on("/temperature", HTTP_GET, handleTemperature);
   server.on("/showluces", HTTP_POST, handleShowLuces);
   server.on("/distancia", HTTP_GET, handleDistancia);
-    if (notification.length() == 0) {
-        server.sendHeader("Content-Length", "0");
-        server.send(204);
-    } else {
-        server.send(200, "text/plain", notification);
-    notification = "";
-    }
-
+    
   server.on("/login", HTTP_POST, handleLogin);
   server.on("/style.css", HTTP_GET, []() {
     File file = SPIFFS.open("/style.css", FILE_READ);
@@ -40,6 +33,12 @@ void setupRoutes() {
     server.streamFile(file, "application/javascript");
     file.close();
   });
+
+  server.on("/favicon.ico", HTTP_GET, []() {
+    server.sendHeader("Content-Length", "0");
+    server.send(204);
+  });
+
 
   
 

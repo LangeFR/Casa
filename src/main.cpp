@@ -18,10 +18,14 @@ String currentUser = "";
 void setup() {
   
   Serial.begin(115200);
-  esp_log_level_set("*", ESP_LOG_NONE);           // Silencia todo
-  esp_log_level_set("WiFiClient", ESP_LOG_NONE);  // Silencia mensajes de WiFiClient
-  esp_log_level_set("WebServer", ESP_LOG_NONE);   // Silencia mensajes del servidor
-  esp_log_level_set("HTTPClient", ESP_LOG_NONE);  // (opcional) si usas HTTPClient
+    // Evita que la librería WebServer/HTTPD use Serial para debug:
+    Serial.setDebugOutput(false);
+    // Silencia los logs internos de HTTPD (WebServer) y WiFi
+    esp_log_level_set("httpd",    ESP_LOG_NONE);
+    esp_log_level_set("WiFi",     ESP_LOG_NONE);
+    esp_log_level_set("WiFiGeneric", ESP_LOG_NONE);
+    esp_log_level_set("WiFiClient", ESP_LOG_NONE);
+    esp_log_level_set("HTTPClient", ESP_LOG_NONE);
 
   
   
