@@ -168,6 +168,28 @@ function updateLightStatus(lightId, value) {
       });
   }
 
+  function actualizarLog() {
+    fetch("/log")
+      .then(response => response.text())
+      .then(data => {
+        document.getElementById("log").innerText = data;
+      });
+  }
+
+  setInterval(actualizarLog, 2000);
+
+
+  function actualizarTemperatura() {
+    fetch("/temperature")
+      .then(response => response.text())
+      .then(data => {
+        document.getElementById("temperature").innerText = data + " °C";
+      });
+  }
+
+  setInterval(actualizarTemperatura, 2000);
+
+
   window.onload = function () {
     loadLog();
     actualizarEstadoAlarma();  // Cargar estado de la alarma al inicio

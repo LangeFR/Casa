@@ -118,9 +118,9 @@ void initWiFi() {
 
 void moveServo(int angle, String origen = "") {
   Serial.print("Origen moviemiento servo ");
-  Serial.print(origen);
+  Serial.println(origen);
   Serial.print("Moviendo servo a ");
-  Serial.print(angle);
+  Serial.println(angle);
   int duty = map(angle, 0, 180, 1638, 7864);
   ledcWrite(SERVO_PWM_CHANNEL, duty);
 }
@@ -173,13 +173,12 @@ void medirTemperatura() {
   float volt = raw * (5.0 / 4095.0);
   float temp = volt * 100.0;
   temperature = String(temp);
-  temperature = 20;
   unsigned long now = millis();
   bool puedeAuto = (now - tiempoUltimoControlManualPersiana > 10000);
 
   if (puedeAuto) {
     if (temp > 70.0 && !motorUpStatus) {
-      moveServo(90, "Meditemp1");
+      moveServo(90, "temp > 70.0");
       motorUpStatus = true;
       motorDownStatus = false;
       // guardarEvento("Temp alta (" + String(temp) + "°C). Persiana subida.");
@@ -190,7 +189,7 @@ void medirTemperatura() {
       
 
     } else if (temp <= 70.0 && !motorDownStatus) {
-      moveServo(45, "Meditemp2");
+      moveServo(45, "temp <= 70");
       motorUpStatus = false;
       motorDownStatus = true;
       

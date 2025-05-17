@@ -108,12 +108,12 @@ void handleControl() {
       } else if (key == "motor_up") {
         motorUpStatus = true;
         motorDownStatus = false;
-        moveServo(90, "MoveServo Subir");
+        moveServo(90, "key == motor_up");
         tiempoUltimoControlManualPersiana = millis();
       } else if (key == "motor_down") {
         motorUpStatus = false;
         motorDownStatus = true;
-        moveServo(45,"MoveServo bajar");
+        moveServo(45,"key == motor_down");
         tiempoUltimoControlManualPersiana = millis();
       }
 
