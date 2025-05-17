@@ -12,9 +12,9 @@ void setupRoutes() {
   server.on("/notifications", HTTP_GET, handleNotifications);
   server.on("/temperature", HTTP_GET, handleTemperature);
   server.on("/showluces", HTTP_POST, handleShowLuces);
-  server.on("/distancia", HTTP_GET, handleDistancia);
-    
+  server.on("/distancia", HTTP_GET, handleDistancia);  
   server.on("/login", HTTP_POST, handleLogin);
+  
   server.on("/style.css", HTTP_GET, []() {
     File file = SPIFFS.open("/style.css", FILE_READ);
     if (!file) {
@@ -38,9 +38,6 @@ void setupRoutes() {
     server.sendHeader("Content-Length", "0");
     server.send(204);
   });
-
-
-  
 
   server.on("/descargarlog", HTTP_GET, []() {
     File file = SPIFFS.open("/log.txt", FILE_READ);

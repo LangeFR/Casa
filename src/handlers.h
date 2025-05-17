@@ -29,6 +29,12 @@ void handleRoot() {
         server.send(500, "text/plain", "index.html no disponible");
         return;
     }
+    File file = SPIFFS.open("/rol_hijos.html", FILE_READ);
+    if (!file || file.size() == 0) {
+        Serial.println("❌ No se pudo abrir rol_hijos.html o está vacío");
+        server.send(500, "text/plain", "rol_hijos.html no disponible");
+        return;
+    }
 
     String html = file.readString();
     file.close();

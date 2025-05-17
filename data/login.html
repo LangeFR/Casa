@@ -192,6 +192,14 @@
             ) {
               alert(`¡Bienvenido ${userInput}! Tu rol es: ${userData.rol}`);
               found = true;
+
+              if (userData.rol === "hijo") {
+                window.location.href = "rol_hijos.html";
+              } else if (userData.rol === "padre") {
+                console.log("HOLA PADRE");
+
+                window.location.href = "index.html";
+              }
               break;
             }
           }
