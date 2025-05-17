@@ -18,8 +18,15 @@ String currentUser = "";
 void setup() {
   
   Serial.begin(115200);
-  esp_log_level_set("*", ESP_LOG_ERROR);              // oculta todos excepto errores
-  esp_log_level_set("WiFiClient", ESP_LOG_ERROR);     // silencia el spam específico
+    // Evita que la librería WebServer/HTTPD use Serial para debug:
+    Serial.setDebugOutput(false);
+    // Silencia los logs internos de HTTPD (WebServer) y WiFi
+    esp_log_level_set("httpd",    ESP_LOG_NONE);
+    esp_log_level_set("WiFi",     ESP_LOG_NONE);
+    esp_log_level_set("WiFiGeneric", ESP_LOG_NONE);
+    esp_log_level_set("WiFiClient", ESP_LOG_NONE);
+    esp_log_level_set("HTTPClient", ESP_LOG_NONE);
+
   
   
   Serial.print("Estado de loggedIn al inicio: ");

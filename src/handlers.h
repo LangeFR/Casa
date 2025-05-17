@@ -107,12 +107,12 @@ void handleControl() {
       } else if (key == "motor_up") {
         motorUpStatus = true;
         motorDownStatus = false;
-        moveServo(90, "MoveServo Subir");
+        moveServo(90, "key == motor_up");
         tiempoUltimoControlManualPersiana = millis();
       } else if (key == "motor_down") {
         motorUpStatus = false;
         motorDownStatus = true;
-        moveServo(45,"MoveServo bajar");
+        moveServo(45,"key == motor_down");
         tiempoUltimoControlManualPersiana = millis();
       }
 
@@ -152,8 +152,8 @@ void handleLog() {
 
 void handleNotifications() {
     if (notification.length() == 0) {
-        server.send(204, "text/plain", "");
-        // Sin contenido, no hay warning
+        server.sendHeader("Content-Length", "0");
+        server.send(204);
     } else {
       server.send(200, "text/plain", notification);
       notification = "";
@@ -198,6 +198,11 @@ void handleAlarmaPOST() {
         }
     }
 }
+
+void handleDistancia() {
+  server.send(200, "text/plain", distancia);
+}
+
 
 void handleAlarmaGET() {
   server.send(200, "text/plain", alarmaActiva ? "on" : "off");
