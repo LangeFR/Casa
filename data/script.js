@@ -186,6 +186,14 @@ function updateLightStatus(lightId, value) {
         document.getElementById("temperature").innerText = data + " °C";
       });
   }
+  setInterval(() => {
+    fetch('/distancia')
+      .then(r => r.text())
+      .then(dist => {
+        document.getElementById("distancia").innerText = `${dist} cm`;
+      });
+  }, 1000);
+
 
   setInterval(actualizarTemperatura, 2000);
 

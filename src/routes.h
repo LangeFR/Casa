@@ -12,8 +12,10 @@ void setupRoutes() {
   server.on("/notifications", HTTP_GET, handleNotifications);
   server.on("/temperature", HTTP_GET, handleTemperature);
   server.on("/showluces", HTTP_POST, handleShowLuces);
+  server.on("/distancia", HTTP_GET, handleDistancia);
     if (notification.length() == 0) {
-        server.send(204, "text/plain", ""); // ← evita warning
+        server.sendHeader("Content-Length", "0");
+        server.send(204);
     } else {
         server.send(200, "text/plain", notification);
     notification = "";

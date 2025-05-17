@@ -51,6 +51,7 @@ unsigned long tiempoInicioTitileo = 0;
 int estadoPrevioLED4 = 0;
 long tiempoUltimoControlManualPersiana = millis();
 bool alarmaActiva = true;
+String distancia = "";
 
 WebServer server(80);
 
@@ -138,6 +139,7 @@ void medirDistancia() {
 
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   float dist = duration * 0.034 / 2;
+  distancia = String(dist);
 
   if (dist > 0 && dist < 5) {
     if (alarmaActiva) {

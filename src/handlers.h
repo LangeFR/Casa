@@ -153,8 +153,8 @@ void handleLog() {
 
 void handleNotifications() {
     if (notification.length() == 0) {
-        server.send(204, "text/plain", "");
-        // Sin contenido, no hay warning
+        server.sendHeader("Content-Length", "0");
+        server.send(204);
     } else {
       server.send(200, "text/plain", notification);
       notification = "";
@@ -199,6 +199,11 @@ void handleAlarmaPOST() {
         }
     }
 }
+
+void handleDistancia() {
+  server.send(200, "text/plain", distancia);
+}
+
 
 void handleAlarmaGET() {
   server.send(200, "text/plain", alarmaActiva ? "on" : "off");
